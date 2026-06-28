@@ -24,6 +24,7 @@ let plannedFullscreenExit = false;
 let comprehensionAttempts = 0;
 let comprehensionPassed = false;
 let excludedForComprehension = false;
+let dataSavedToDatapipe = false;
 
 function currentFullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement || null;
@@ -1240,12 +1241,7 @@ function savingTrial() {
     stimulus: `<div class="study-shell"><div class="qualtrics-card standalone saving-card"><h2>Saving your data...</h2><p>Please do not close this page.</p></div></div>`,
     choices: "NO_KEYS",
     trial_duration: 500,
-    data: { phase: "before_save" },
-    on_start: function () {
-      if (comprehensionPassed) {
-        setStoredStudyStatus("completed");
-      }
-    }
+    data: { phase: "before_save" }
   };
 }
 
@@ -1256,7 +1252,13 @@ function pipeSaveTrial() {
     experiment_id: DATAPIPE_EXPERIMENT_ID,
     filename: data_filename,
     data_string: () => getFilteredDataCsv(),
-    wait_message: "<div class='study-shell'><div class='qualtrics-card standalone saving-card'><h2>Saving your data...</h2><p>Please do not close this page.</p></div></div>"
+    wait_message: "<div class='study-shell'><div class='qualtrics-card standalone saving-card'><h2>Saving your data...</h2><p>Please do not close this page.</p></div></div>",
+    on_finish: function () {
+      if (comprehensionPassed) {
+        dataSavedToDatapipe = true;
+        setStoredStudyStatus("completed");
+      }
+    }
   };
 }
 
@@ -1404,7 +1406,7 @@ async function buildAndRunExperiment() {
   timeline.push({
     timeline: [finalPageTrial()],
     conditional_function: function () {
-      return comprehensionPassed;
+      return comprehensionPassed && (!isDatapipeConfigured() || dataSavedToDatapipe);
     }
   });
 
