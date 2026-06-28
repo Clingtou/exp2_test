@@ -25,6 +25,7 @@ let comprehensionAttempts = 0;
 let comprehensionPassed = false;
 let excludedForComprehension = false;
 let dataSavedToDatapipe = false;
+let dataSaveFailed = false;
 
 function currentFullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement || null;
@@ -421,67 +422,6 @@ function humanVerificationTrial(imagePath) {
   };
 }
 
-function instructionDiagramHtml() {
-  return `
-    <div class="instruction-diagram" aria-label="Ultimatum game flow diagram">
-      <div class="diagram-steps">
-        <div class="diagram-step">
-          <div class="step-number">1</div>
-          <div class="role-card">
-            <div class="role-pair">
-              <div class="person proposer-person"></div>
-              <div class="person receiver-person"></div>
-            </div>
-            <div class="role-labels"><span>Proposer</span><span>Receiver</span></div>
-          </div>
-          <div class="step-caption">Two roles.</div>
-        </div>
-        <div class="diagram-arrow">鈫?/div>
-        <div class="diagram-step">
-          <div class="step-number">2</div>
-          <div class="proposal-card">
-            <div class="bonus-circle">100<br><span>cents<br>bonus</span></div>
-            <div class="mini-caption">Proposer decides<br>how to split.</div>
-            <div class="mini-split">
-              <span>You</span>
-              <span>Proposer</span>
-            </div>
-          </div>
-          <div class="step-caption">The proposer decides how to divide 100 cents.</div>
-        </div>
-        <div class="diagram-arrow">鈫?/div>
-        <div class="diagram-step">
-          <div class="step-number">3</div>
-          <div class="receiver-card">
-            <div class="mini-caption">Receiver sees the<br>proposed split.</div>
-            <div class="mini-pie"><span>垄</span><span>垄</span></div>
-            <div class="mini-caption">Receiver makes<br>one decision.</div>
-            <div class="diagram-choice accept-choice">鉁?Accept</div>
-            <div class="diagram-choice reject-choice">鉁?Reject</div>
-          </div>
-          <div class="step-caption">The receiver has one chance to decide.</div>
-        </div>
-        <div class="diagram-arrow">鈫?/div>
-        <div class="diagram-step">
-          <div class="step-number">4</div>
-          <div class="outcome-card">
-            <div class="outcome-title">Outcomes</div>
-            <div class="diagram-choice accept-choice">鉁?Accept</div>
-            <div class="outcome-text">Both receive the proposed amounts.</div>
-            <div class="diagram-choice reject-choice">鉁?Reject</div>
-            <div class="zero-row"><span>0</span><span>0</span></div>
-            <div class="outcome-text">Both receive 0.</div>
-          </div>
-        </div>
-      </div>
-      <div class="diagram-notes">
-        <div>You and the proposer do not know each other's personal information.</div>
-        <div>${BONUS_DRAW_PERCENT}% of receivers are randomly selected for real bonus payment.</div>
-      </div>
-    </div>
-  `;
-}
-
 function instructionTrial() {
   return {
     type: jsPsychHtmlButtonResponse,
@@ -721,7 +661,7 @@ function proposalDecisionTrial(condition, split, trialIndex) {
     ...split
   };
   const html = shellHtml(`
-    <div class="stimulus-content pretest-decision-content">
+    <div class="stimulus-content exp2-decision-content">
       <div class="offer-title">Proposal ${trialNumber}: The other participant proposed this allocation of 100 cents.</div>
       <div class="offer-subtitle">
         This is your <span class="doc-red">actual decision</span> for this proposal. Please decide whether to accept or reject it.<br>
@@ -841,13 +781,13 @@ function proposalEvaluationTrial(condition, split, trialIndex) {
     ...split
   };
   const html = shellHtml(`
-    <form id="proposal-rating-form" class="stimulus-content pretest-rating-form" novalidate>
+    <form id="proposal-rating-form" class="stimulus-content exp2-rating-form" novalidate>
       <div class="offer-title">Proposal ${trialNumber}: The other participant proposed this allocation of 100 cents.</div>
       <div class="offer-subtitle">
         Please evaluate this proposal carefully.
       </div>
       <div class="amount-display-wrap exp2-display-wrap">${amountDisplayHtml(stimulusCondition)}</div>
-      <div class="pretest-scale-panel">
+      <div class="exp2-scale-panel">
         ${questions.map(q => scaleQuestionHtml(q.name, q.text, q.left, q.right)).join("")}
       </div>
       <button type="submit" class="form-submit">Next</button>
@@ -1170,8 +1110,8 @@ function postQuestionnaireTrials() {
     ], 5),
     postScaleTrial([
       {
-        name: "chart_influence_impression_7",
-        text: "Thinking back across the decisions, to what extent did the amount displays seem designed to influence your impression of the allocations?",
+        name: "font_size_influence_impression_7",
+        text: "Thinking back across the decisions, to what extent did the font-size differences in the displayed amounts seem designed to influence your impression of the allocations?",
         left: "1 - Not at all",
         right: "7 - Very much"
       }
@@ -1245,6 +1185,24 @@ function savingTrial() {
   };
 }
 
+function datapipeSaveSucceeded(data) {
+  if (!data || typeof data !== "object") {
+    return true;
+  }
+  const statusText = String(data.status || data.save_status || data.result || "").toLowerCase();
+  const errorText = String(data.error || data.error_message || data.message || "").toLowerCase();
+  if (data.success === false || data.saved === false || data.error) {
+    return false;
+  }
+  if (statusText.includes("fail") || statusText.includes("error")) {
+    return false;
+  }
+  if (errorText.includes("fail") || errorText.includes("error")) {
+    return false;
+  }
+  return true;
+}
+
 function pipeSaveTrial() {
   return {
     type: jsPsychPipe,
@@ -1253,12 +1211,27 @@ function pipeSaveTrial() {
     filename: data_filename,
     data_string: () => getFilteredDataCsv(),
     wait_message: "<div class='study-shell'><div class='qualtrics-card standalone saving-card'><h2>Saving your data...</h2><p>Please do not close this page.</p></div></div>",
-    on_finish: function () {
-      if (comprehensionPassed) {
+    on_finish: function (data) {
+      if (comprehensionPassed && datapipeSaveSucceeded(data)) {
         dataSavedToDatapipe = true;
         setStoredStudyStatus("completed");
+      } else if (comprehensionPassed) {
+        dataSaveFailed = true;
       }
     }
+  };
+}
+
+function saveFailedTrial() {
+  return {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: shellHtml(`
+      <h2 class="intro-title">We could not confirm that your data were saved.</h2>
+      <p class="warning">Please do not submit this study on Prolific yet.</p>
+      <p>Please keep this page open and contact the researcher for assistance.</p>
+    `, STUDY_TITLE, "abort-shell"),
+    choices: ["Exit"],
+    data: { phase: "save_failed" }
   };
 }
 
@@ -1400,6 +1373,13 @@ async function buildAndRunExperiment() {
     timeline: [localSaveNoticeTrial()],
     conditional_function: function () {
       return !isDatapipeConfigured() && (comprehensionPassed || excludedForComprehension);
+    }
+  });
+
+  timeline.push({
+    timeline: [saveFailedTrial()],
+    conditional_function: function () {
+      return comprehensionPassed && isDatapipeConfigured() && dataSaveFailed && !dataSavedToDatapipe;
     }
   });
 
