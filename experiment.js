@@ -186,8 +186,8 @@ const areaConditions = [
 
 function buildConditionTable() {
   const rows = [];
-  areaConditions.forEach(function (area) {
-    positions.forEach(function (position) {
+  positions.forEach(function (position) {
+    areaConditions.forEach(function (area) {
       rows.push({
         condition_index: rows.length,
         condition_label: `${area.area_condition}_${position.position_condition}_black_text`,
